@@ -25,15 +25,19 @@ downsampleFunc =@ DownSampleMatByAvg;
 nAvgTrial = 1;
 epochLength = 600;
 
-for z=1; 
-%for z=1:length(all_files) %parsing through subjects and findig a matrix for each
-    
+% Create a parallel pool
+pc = parcluster('local');
+pc.NumWorkers = 10; % Adjust the number of workers as needed
+parpool(pc);
+
+parfor z=1:length(all_files) %parsing through subjects and findig a matrix for each
+
     allData   = [];
     allStim   = [];
     allLabels = [];
 
     bad_channels = [];
-    %extract bad channel info from the excel table
+    %parse the excel file and set bad channels to 0
     subj_name = subjects_temp{z};
     [~, ~, raw] = xlsread("bad_channels.xlsx");
     raw = raw(2:end,:);
@@ -46,16 +50,28 @@ for z=1;
             end
         end
     end
-    
-    for j=1:size(all_files{z},1)
+
+    %for all files of subject z
+    for j=1:4
+        out_of_range = false;
+        try
+            all_files{z}{j};
+        catch e
+            out_of_range = true;
+        end
+
+        if out_of_range
+            break
+        end
+
         sprintf('Training file %d for subject %d',j,z)
-        [ signal, states, parameters ] = load_bcidat(all_files{z}(j,:));
+        [ signal, states, parameters ] = load_bcidat(all_files{z}{j});
         parameters1{z,j}=parameters;
         rate = parameters.SamplingRate.NumericValue;
         [num,den]=butter(1,1/(rate/2),'high'); %high pass the signal
         signal=filter(num,den,double(signal));
         epochPoints = ceil(epochLength * rate / 1000);
-        
+
         stimulusType = states.StimulusType;
         stimulusCode = double(states.StimulusCode);
         %keep only the onset points, ignoring the flat regions
@@ -91,3 +107,6 @@ for z=1;
      labels1{z}=allLabels; %?????
      allStim1{z}=allStim;
 end;
+
+% Close the parallel pool
+delete(gcp('nocreate'));
