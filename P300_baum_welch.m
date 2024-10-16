@@ -2,39 +2,49 @@ function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean
 
 min_score=-1;
 max_score=2;
-max_iter=3;
+max_iter=10;    %manually set max iteration to 10
 
 ws=zeros(length(trainData1),size(trainData1{1},2));
 for i=1:size(ws,1)
     ws(i,feaSelector1{i})=coeff1{i};
 end;
 
-sprintf('compiling transition matrix')
+%set 'sp' symbol to '_' to avoid errors
 parameters=parameters1{1,1};
+parameters.TargetDefinitions.Value{36,1}='_';
 targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
-transition_matrix=zeros(length(targets)*length(targets));
-lambda=1; % add lambda smoothing
-for i=1:length(targets)
-    for j=1:length(targets)
-        for k=1:length(targets)
-            denom=length(targets)*lambda;
-            try
-                denom=map.(['t' targets([i j])' 'X'])+length(targets)*lambda;
-            catch e
-            end;
-            try
-                denom=denom-map.(['t' targets([i j])' '0']);
-            catch e
-            end;
-            num=lambda;
-            try
-                num=map.(['t' targets([i j k])'])+lambda;
-            catch e
-            end;
-            transition_matrix((i-1)*length(targets)+j,(j-1)*length(targets)+k)=num/denom;
-        end;
-    end;
-end;
+
+% load transition matrix or compile one if not exist yet
+try
+    load('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat')
+catch e
+    sprintf('compiling transition matrix')
+    transition_matrix=zeros(length(targets)*length(targets));
+    lambda=1; % add lambda smoothing
+    for i=1:length(targets)
+        for j=1:length(targets)
+            for k=1:length(targets)
+                denom=length(targets)*lambda;
+                try
+                    denom=map.(['t' targets([i j])' 'X'])+length(targets)*lambda;
+                catch e
+                end
+                try
+                    denom=denom-map.(['t' targets([i j])' '0']);
+                catch e
+                end
+                num=lambda;
+                try
+                    num=map.(['t' targets([i j k])'])+lambda;
+                catch e
+                end
+                transition_matrix((i-1)*length(targets)+j,(j-1)*length(targets)+k)=num/denom;
+            end
+        end
+    end
+    save('transition_matrix.mat', 'transition_matrix')
+end
+
 blank=zeros(1,length(targets)*length(targets));
 blank(end)=1;
 
@@ -57,14 +67,37 @@ if(nargin>7) %for running single subject
 end;
 for z=zs
     sprintf('testing subject: %d',z)
-    all_data=[];
-    all_stim=[];
-    all_labs=[];
-    for i=setdiff(1:length(trainData1),z)
-        all_data=[all_data;trainData1{i}];
-        all_stim=[all_stim;allStim1{i}];
-        all_labs=[all_labs;labels1{i}];
-    end;
+    len = length(trainData1)-1;
+    range = setdiff(1:length(trainData1), z);
+    info_array = zeros(len, 2);
+    sum_dim = 0;
+    for k=1:len
+        j = range(k);
+        info_array(k, 2) = size(trainData1{j}, 1);  %dim1 of trainData1{j}
+        if k>1
+            info_array(k, 1) = info_array(k-1, 1)+info_array(k-1, 2);
+        else
+            info_array(k, 1) = 1;
+        end
+        sum_dim = sum_dim+info_array(k, 2);
+    end
+    
+    tic;
+    dim2 = size(trainData1{1}, 2);  %dim2 of trainData1{i}
+    all_data = zeros(sum_dim, dim2);
+    all_stim = zeros(sum_dim, 1);
+    all_labs = zeros(sum_dim, 1);
+    for i=1:len
+        j = range(i);
+        start = info_array(i, 1);
+        duration = info_array(i, 2);
+        all_data(start:start+duration-1, :) = trainData1{j};
+        all_stim(start:start+duration-1, :) = allStim1{j};
+        all_labs(start:start+duration-1, :) = labels1{j};
+    end
+    elapsedTime = toc; % Stop timer and get elapsed time
+    fprintf('data loading time is %.4f seconds.\n', elapsedTime);
+
     test_data=trainData1{z};
     w0=ws(setdiff(1:length(trainData1),z),:);
     scores_pop=max(min_score,min(max_score,all_data*w0'));
@@ -86,8 +119,8 @@ for z=zs
     
     scores=max(-1,min(2,test_data*w0'));
     try
-    probs_a=mvnpdf(scores,mean_a_pop,cov_a_pop);
-    probs_n=mvnpdf(scores,mean_n_pop,cov_n_pop);
+        probs_a=mvnpdf(scores,mean_a_pop,cov_a_pop);
+        probs_n=mvnpdf(scores,mean_n_pop,cov_n_pop);
     catch
         scores=normrnd(zeros(length(scores),1),1);
         probs_a=normpdf(scores,0,1);
@@ -109,6 +142,7 @@ for z=zs
     labs=cell(0);
     answer=[];
     used=zeros(size(scores,1),1);
+    tic;
     while ~converged
         sprintf('iteration: %d',counter)
         fb_trellis=[];
@@ -118,8 +152,9 @@ for z=zs
             if(isempty(parameters1{z,i}))
                 break;
             end;
-            parameters=parameters1{z,i};
+            parameters=parameters1{z,i};           
             word=lower(parameters.TextToSpell.Value{1});
+            parameters.TargetDefinitions.Value{36,1}=' ';
             targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
             nTargets=length(targets);
             nLetters=length(word);
@@ -224,6 +259,8 @@ for z=zs
         end;
         counter=counter+1;
     end;
+    elapsedTime = toc; % Stop timer and get elapsed time
+    fprintf('baum-welch time is %.4f seconds.\n', elapsedTime);
     all_coeffs{z}=coeffs;
     all_feaSelectors{z}=feaSelectors;
     all_mean_as{z}=mean_as;
