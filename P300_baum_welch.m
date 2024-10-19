@@ -42,7 +42,7 @@ catch e
             end
         end
     end
-    save('transition_matrix.mat', 'transition_matrix')
+    save('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat', 'transition_matrix')
 end
 
 blank=zeros(1,length(targets)*length(targets));
@@ -61,11 +61,10 @@ all_accs=cell(length(trainData1),1);
 all_trells=cell(length(trainData1),1);
 all_labels=cell(length(trainData1),1);
 
+%specify which subject
 zs=1:length(trainData1);
-if(nargin>7) %for running single subject
-    zs=subject_index;
-end;
-for z=zs
+for z=[10]
+% for z=setdiff(zs, subj_list)
     sprintf('testing subject: %d',z)
     len = length(trainData1)-1;
     range = setdiff(1:length(trainData1), z);
@@ -105,18 +104,8 @@ for z=zs
     mean_n_pop=mean(scores_pop(all_labs~=1,:),1);
     cov_a_pop =cov (scores_pop(all_labs==1,:),1);
     cov_n_pop =cov (scores_pop(all_labs~=1,:),1);
-    
-%     temp=[];
-%     temp(:,:)=sum(reshape(w0.^2,[size(w0,1),13,32]),2);
-%     temp2=temp./(sum(temp,2)*ones(1,32));
-%     [channels,~]=ttest(temp2,[],.05);
-%     w0=reshape(w0,[size(w0,1),13,32]);
-%     w0=w0(:,:,find(channels==1));
-%     w0=reshape(w0,[size(w0,1),size(w0,2)*size(w0,3)]);
-%     test_data=reshape(test_data,[size(test_data,1),13,32]);
-%     test_data=test_data(:,:,find(channels==1));
-%     test_data=reshape(test_data,[size(test_data,1),size(test_data,2)*size(test_data,3)]);
-    
+
+    %Gaussian mixture model based on mean and cov
     scores=max(-1,min(2,test_data*w0'));
     try
         probs_a=mvnpdf(scores,mean_a_pop,cov_a_pop);
@@ -125,11 +114,12 @@ for z=zs
         scores=normrnd(zeros(length(scores),1),1);
         probs_a=normpdf(scores,0,1);
         probs_n=normpdf(scores,0,1);
-    end;
-    
-%     probs_a=zeros(size(probs_a));
-%     probs_n=zeros(size(probs_n));
-    
+    end
+
+
+%=======================================================================
+%baum-welch algorith, updating the parameters
+%=======================================================================
     converged=0;
     counter=1;
     coeffs=cell(0);
@@ -142,85 +132,90 @@ for z=zs
     labs=cell(0);
     answer=[];
     used=zeros(size(scores,1),1);
+
     tic;
     while ~converged
         sprintf('iteration: %d',counter)
         fb_trellis=[];
         results=[];
-        is=1:size(parameters1,2);
+        tLetters=0;
         for i=1:size(parameters1,2)
             if(isempty(parameters1{z,i}))
                 break;
-            end;
-            parameters=parameters1{z,i};           
+            end
+            parameters=parameters1{z,i};
             word=lower(parameters.TextToSpell.Value{1});
             parameters.TargetDefinitions.Value{36,1}=' ';
             targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
             nTargets=length(targets);
             nLetters=length(word);
+            tLetters=tLetters+nLetters;
             nSeq=parameters.NumberOfSequences.NumericValue;
             nr=parameters.NumMatrixRows.NumericValue;
             nc=parameters.NumMatrixColumns.NumericValue;
             nStim=nr+nc;
-            nTrials=nLetters*nSeq*nStim;
-            
+
             a_trellis=zeros(nLetters,power(nTargets,2));
             b_trellis=zeros(nLetters,power(nTargets,2));
             v_trellis=zeros(nLetters,power(nTargets,2));
             back_pointers=zeros(nLetters,power(nTargets,2));
             target=mod((1:size(a_trellis,2))-1,nTargets)+1;
-            
+
             for j=1:nLetters
-                answer((i-1)*nLetters+j)=find(targets==word(j));
+                answer(tLetters-nLetters+j)=find(targets==word(j));
                 a_score=zeros(1,size(a_trellis,2));
                 b_score=zeros(1,size(b_trellis,2));
                 for k=1:nStim*nSeq
-                    index=((i-1)*nLetters+j-1)*nStim*nSeq+k;
+                    index=(tLetters-nLetters+j-1)*nStim*nSeq+k;
                     if(isempty(find(exclude==i,1)))
                         used(index)=1;
-                    end;
+                    end
                     attended=or(floor((target-1)/nr+1)==allStim1{z}(index),...
                         (mod((target-1),nr)+nr+1)==allStim1{z}(index));
                     prob=attended*(probs_a(index)/probs_n(index))+(1-attended);
                     a_score=a_score+log10(prob);
-                    
+                    a_score=a_score-max(a_score);
+
                     if j>1
-                        index2=(i*nLetters+1-j)*nStim*nSeq+k;
+                        index2=(tLetters+1-j)*nStim*nSeq+k;
                         attended2=or(floor((target-1)/nr+1)==allStim1{z}(index2),...
                             (mod((target-1),nr)+nr+1)==allStim1{z}(index2));
                         prob2=attended2*(probs_a(index2)/probs_n(index2))+(1-attended2);
                         b_score=b_score+log10(prob2);
-                    end;
-                end;
+                        b_score=b_score-max(b_score);
+                    end
+                end
                 if j>1
                     a_trellis(j,:)=log10(power(10,a_trellis(j-1,:))*transition_matrix)+a_score;
+                    %a_trellis(j,:)=a_trellis(j,:)-max(a_trellis(j,:));
                     b_trellis(nLetters+1-j,:)=log10(power(10,b_trellis(nLetters+2-j,:)+b_score)*transition_matrix');
                     [m_score,back_pointer]=max(v_trellis(j-1,:)'*ones(1,length(blank))+transition_matrix,[],1);
                     back_pointers(j,:)=back_pointer;
                     v_trellis(j,:)=a_score+m_score;
+                    %v_trellis(j,:)=v_trellis(j,:)-max(v_trellis(j,:));
                 else
                     a_trellis(j,:)=log10(blank*transition_matrix)+a_score;
                     b_trellis(nLetters+1-j,:)=0;
                     [m_score,~]=max(log10(blank')*ones(1,length(blank))+transition_matrix,[],1);
                     v_trellis(j,:)=a_score+m_score;
-                end;
-            end;
+                end
+            end
             [~,b]=max(v_trellis(nLetters,:));
             result=b;
             for j=nLetters:-1:2
                 b=back_pointers(j,b);
                 result=[b,result];
-            end;
-            results=[results,mod(result,nTargets)];
+            end
+            results=[results,mod(result-1,nTargets)+1];
             fb_trellis=[fb_trellis; a_trellis+b_trellis];
-        end;
+        end
         fb_trellis=fb_trellis-max(fb_trellis(:));
         fb_trellis=power(10,fb_trellis);
         fb_trellis=fb_trellis./(sum(fb_trellis,2)*ones(1,size(fb_trellis,2)));
         lab_pdf=sum(reshape(fb_trellis,[size(fb_trellis,1),nTargets,nTargets]),3);
         lab_pdf=lab_pdf(floor(((1:size(scores,1))-1)/nSeq/nStim+1),:);
         lab_cdf=cumsum(lab_pdf,2);
-        
+
         r=rand(size(lab_cdf,1),1)*ones(1,nTargets);
         sample=sum(lab_cdf<r,2)+1;
         lab=or(floor((sample-1)/nr+1)==allStim1{z},(mod((sample-1),nr)+nr+1)==allStim1{z});
@@ -233,9 +228,9 @@ for z=zs
         std_n =std (scores((used.*(1-lab))==1,:),1);
         probs_a=normpdf(scores,mean_a,std_a);
         probs_n=normpdf(scores,mean_n,std_n);
-        
+
         acc=sum(answer==results)/length(answer)
-        
+
         coeffs{counter}=coeff;
         feaSelectors{counter}=feaSelector;
         mean_as{counter}=mean_a;
@@ -245,8 +240,8 @@ for z=zs
         accs{counter}=acc;
         trells{counter}=fb_trellis;
         labs{counter}=lab;
-        
-        
+
+
 %         for i=1:counter-1
 %             if length(coeff)==length(coeffs{i})
 %                 if sum(coeff==coeffs{i})==length(coeff)
@@ -256,11 +251,13 @@ for z=zs
 %         end;
         if(counter>=max_iter)
             converged=1;
-        end;
+        end
         counter=counter+1;
-    end;
+    end
+
     elapsedTime = toc; % Stop timer and get elapsed time
     fprintf('baum-welch time is %.4f seconds.\n', elapsedTime);
+
     all_coeffs{z}=coeffs;
     all_feaSelectors{z}=feaSelectors;
     all_mean_as{z}=mean_as;
