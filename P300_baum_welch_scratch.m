@@ -32,8 +32,9 @@ dir = '/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch';
 w=load(strcat(dir,'/map.mat'));
 map=w.map;
 
-[answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns,all_channels,all_trells,all_labels] = P300_baum_welch(trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map,1,[]);
-
+for i=1:10
+    [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns,all_channels,all_trells,all_labels,all_lists] = P300_baum_welch(i, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map,1,[]);
+end
 
 % ws0=zeros(length(trainData1),size(trainData1{1},2)); 
 % for i=1:size(ws0,1)

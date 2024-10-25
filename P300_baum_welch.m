@@ -1,24 +1,36 @@
-function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_channels, all_trells, all_labels] = P300_baum_welch(trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, subject_index, exclude)
+function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_channels, all_trells, all_labels, all_lists] = P300_baum_welch(nLetters, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, subject_index, exclude)
 
 min_score=-1;
 max_score=2;
 max_iter=10;    %manually set max iteration to 10
 
-ws=zeros(length(trainData1),size(trainData1{1},2));
-for i=1:size(ws,1)
+%skip those bad subjects, as well as Greek subjects
+invalid=[1,3,6,26,48,51,54,58];
+greek=[70:71,73:74,76:81];
+subj_list=[invalid, greek];
+%subj_list=[62:63,65:66,68:73];
+%specify which subject
+zs=1:length(trainData1);
+inds=setdiff(zs, subj_list);
+cv=setdiff(zs, invalid);
+
+%feaSelector contains indices, coeff contains values
+%translating feaSelector and coeff into weights (sparse)
+ws=zeros(length(trainData1),size(trainData1{1},2));     
+for i=cv
     ws(i,feaSelector1{i})=coeff1{i};
-end;
+end
 
 %set 'sp' symbol to '_' to avoid errors
-parameters=parameters1{1,1};
+parameters=parameters1{2,1};
 parameters.TargetDefinitions.Value{36,1}='_';
 targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
 
 % load transition matrix or compile one if not exist yet
+sprintf('compiling transition matrix')
 try
     load('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat')
-catch e
-    sprintf('compiling transition matrix')
+catch e    
     transition_matrix=zeros(length(targets)*length(targets));
     lambda=1; % add lambda smoothing
     for i=1:length(targets)
@@ -60,14 +72,18 @@ all_channels=cell(length(trainData1),1);
 all_accs=cell(length(trainData1),1);
 all_trells=cell(length(trainData1),1);
 all_labels=cell(length(trainData1),1);
+all_lists=[];
 
-%specify which subject
-zs=1:length(trainData1);
+
+%create figure, multiple subjects in one plot
+figure;         
+hold on;
+
 for z=[10]
 % for z=setdiff(zs, subj_list)
     sprintf('testing subject: %d',z)
-    len = length(trainData1)-1;
-    range = setdiff(1:length(trainData1), z);
+    len = length(cv)-1;
+    range = setdiff(cv, z);
     info_array = zeros(len, 2);
     sum_dim = 0;
     for k=1:len
@@ -98,15 +114,51 @@ for z=[10]
     fprintf('data loading time is %.4f seconds.\n', elapsedTime);
 
     test_data=trainData1{z};
-    w0=ws(setdiff(1:length(trainData1),z),:);
+    w0=ws(setdiff(cv,z),:);
     scores_pop=max(min_score,min(max_score,all_data*w0'));
     mean_a_pop=mean(scores_pop(all_labs==1,:),1);
     mean_n_pop=mean(scores_pop(all_labs~=1,:),1);
     cov_a_pop =cov (scores_pop(all_labs==1,:),1);
     cov_n_pop =cov (scores_pop(all_labs~=1,:),1);
 
+    %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    % taking slices of test_data by changing nLetters
+    %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+    %count the number of files for a subject, nFiles = 1~3
+    nFiles=0;     
+    for i=1:size(parameters1,2)
+        if(isempty(parameters1{z,i}))
+            break;
+        end
+        nFiles=nFiles+1;
+    end
+
+    %set up parameters to properly extract a subset of data
+    params=parameters1{z,1};
+    ratio = nLetters/10;
+    nSeq=parameters.NumberOfSequences.NumericValue;
+    nr=parameters.NumMatrixRows.NumericValue;
+    nc=parameters.NumMatrixColumns.NumericValue;
+    nStim=nr+nc;
+    dataSize=nStim*nSeq*10;
+
+    %take slices of test_data for unsupervised training
+    test_data_sliced = [];
+    for j=1:nFiles
+        start = int64(1+(j-1)*dataSize);
+        test_data_sliced = [test_data_sliced; test_data(start:(start+int64(dataSize*ratio)-1),:)];
+    end    
+
+    %take slices of allStim1{z} such that the shapes match
+    z_stim_sliced = [];
+    for k=1:nFiles
+        start = int64(1+(k-1)*dataSize);
+        z_stim_sliced = [z_stim_sliced; allStim1{z}(start:(start+int64(dataSize*ratio)-1),:)];
+    end 
+
     %Gaussian mixture model based on mean and cov
-    scores=max(-1,min(2,test_data*w0'));
+    scores=max(-1,min(2,test_data_sliced*w0'));
     try
         probs_a=mvnpdf(scores,mean_a_pop,cov_a_pop);
         probs_n=mvnpdf(scores,mean_n_pop,cov_n_pop);
@@ -115,6 +167,11 @@ for z=[10]
         probs_a=normpdf(scores,0,1);
         probs_n=normpdf(scores,0,1);
     end
+
+    % set min non-zero value to 0
+    mv=min([probs_a(probs_a>0);probs_n(probs_n>0)]);
+    probs_a(probs_a==0)=mv;
+    probs_n(probs_n==0)=mv;
 
 
 %=======================================================================
@@ -133,6 +190,7 @@ for z=[10]
     answer=[];
     used=zeros(size(scores,1),1);
 
+    acc_list=[];
     tic;
     while ~converged
         sprintf('iteration: %d',counter)
@@ -148,19 +206,18 @@ for z=[10]
             parameters.TargetDefinitions.Value{36,1}=' ';
             targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
             nTargets=length(targets);
-            nLetters=length(word);
             tLetters=tLetters+nLetters;
             nSeq=parameters.NumberOfSequences.NumericValue;
             nr=parameters.NumMatrixRows.NumericValue;
             nc=parameters.NumMatrixColumns.NumericValue;
             nStim=nr+nc;
-
+            
             a_trellis=zeros(nLetters,power(nTargets,2));
             b_trellis=zeros(nLetters,power(nTargets,2));
             v_trellis=zeros(nLetters,power(nTargets,2));
             back_pointers=zeros(nLetters,power(nTargets,2));
             target=mod((1:size(a_trellis,2))-1,nTargets)+1;
-
+            
             for j=1:nLetters
                 answer(tLetters-nLetters+j)=find(targets==word(j));
                 a_score=zeros(1,size(a_trellis,2));
@@ -170,16 +227,16 @@ for z=[10]
                     if(isempty(find(exclude==i,1)))
                         used(index)=1;
                     end
-                    attended=or(floor((target-1)/nr+1)==allStim1{z}(index),...
-                        (mod((target-1),nr)+nr+1)==allStim1{z}(index));
+                    attended=or(floor((target-1)/nr+1)==z_stim_sliced(index),...
+                        (mod((target-1),nr)+nr+1)==z_stim_sliced(index));
                     prob=attended*(probs_a(index)/probs_n(index))+(1-attended);
                     a_score=a_score+log10(prob);
                     a_score=a_score-max(a_score);
-
+                    
                     if j>1
                         index2=(tLetters+1-j)*nStim*nSeq+k;
-                        attended2=or(floor((target-1)/nr+1)==allStim1{z}(index2),...
-                            (mod((target-1),nr)+nr+1)==allStim1{z}(index2));
+                        attended2=or(floor((target-1)/nr+1)==z_stim_sliced(index2),...
+                            (mod((target-1),nr)+nr+1)==z_stim_sliced(index2));
                         prob2=attended2*(probs_a(index2)/probs_n(index2))+(1-attended2);
                         b_score=b_score+log10(prob2);
                         b_score=b_score-max(b_score);
@@ -200,10 +257,10 @@ for z=[10]
                     v_trellis(j,:)=a_score+m_score;
                 end
             end
-            [~,b]=max(v_trellis(nLetters,:));
+            [~,b]=max(v_trellis(nLetters,:));   % get the last char
             result=b;
             for j=nLetters:-1:2
-                b=back_pointers(j,b);
+                b=back_pointers(j,b);   % trace back the best path
                 result=[b,result];
             end
             results=[results,mod(result-1,nTargets)+1];
@@ -215,22 +272,24 @@ for z=[10]
         lab_pdf=sum(reshape(fb_trellis,[size(fb_trellis,1),nTargets,nTargets]),3);
         lab_pdf=lab_pdf(floor(((1:size(scores,1))-1)/nSeq/nStim+1),:);
         lab_cdf=cumsum(lab_pdf,2);
-
+        
         r=rand(size(lab_cdf,1),1)*ones(1,nTargets);
         sample=sum(lab_cdf<r,2)+1;
-        lab=or(floor((sample-1)/nr+1)==allStim1{z},(mod((sample-1),nr)+nr+1)==allStim1{z});
+        lab=or(floor((sample-1)/nr+1)==z_stim_sliced,(mod((sample-1),nr)+nr+1)==z_stim_sliced);
 
-        [coeff,  feaSelector] = BuildStepwiseLDA(test_data(find(used==1),:), lab(find(used==1)));
-        scores=test_data(:,feaSelector)*coeff;
+        [coeff,  feaSelector] = BuildStepwiseLDA(test_data_sliced(find(used==1),:), lab(find(used==1)));
+        scores=test_data_sliced(:,feaSelector)*coeff;
         mean_a=mean(scores((used.*lab)    ==1,:),1);
         mean_n=mean(scores((used.*(1-lab))==1,:),1);
         std_a =std (scores((used.*lab)    ==1,:),1);
         std_n =std (scores((used.*(1-lab))==1,:),1);
         probs_a=normpdf(scores,mean_a,std_a);
         probs_n=normpdf(scores,mean_n,std_n);
-
-        acc=sum(answer==results)/length(answer)
-
+        
+        acc=sum(answer==results)/length(answer);
+        acc_list = [acc_list, acc];
+        acc_list   %print out accuracy for inspection
+        
         coeffs{counter}=coeff;
         feaSelectors{counter}=feaSelector;
         mean_as{counter}=mean_a;
@@ -240,8 +299,8 @@ for z=[10]
         accs{counter}=acc;
         trells{counter}=fb_trellis;
         labs{counter}=lab;
-
-
+        
+        
 %         for i=1:counter-1
 %             if length(coeff)==length(coeffs{i})
 %                 if sum(coeff==coeffs{i})==length(coeff)
@@ -249,6 +308,7 @@ for z=[10]
 %                 end;
 %             end;
 %         end;
+
         if(counter>=max_iter)
             converged=1;
         end
@@ -258,6 +318,7 @@ for z=[10]
     elapsedTime = toc; % Stop timer and get elapsed time
     fprintf('baum-welch time is %.4f seconds.\n', elapsedTime);
 
+    plot(acc_list);   %plot the accuracy over the iterations
     all_coeffs{z}=coeffs;
     all_feaSelectors{z}=feaSelectors;
     all_mean_as{z}=mean_as;
@@ -265,6 +326,8 @@ for z=[10]
     all_std_as{z}=std_as;
     all_std_ns{z}=std_ns;
     all_accs{z}=accs;
+    all_lists=[all_lists;acc_list];
+    save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/acc_nchar_"+nLetters+".mat","all_lists");
     answers{z}=answer;
     all_results{z}=results;
     all_trells{z}=trells;
