@@ -1,26 +1,7 @@
 addpath('helper');
 szFile = '/Users/yangziyi/Desktop/Neuro Research/p300_data/';
 
-% % extract data from 83 subjects, each subject could have more than 1 trial
-% if ischar(szFile)
-%     subjects_temp = {dir(strcat(szFile,'subject*')).name}';
-% 
-%     subjects = cell(size(subjects_temp,1),1);
-%     for i=1:size(subjects_temp,1) %Creates a list of the file locations of the subjects
-%         subjects{i}=strtrim(strcat(szFile,subjects_temp(i,:)));
-%     end;
-% 
-%     files = cell(size(subjects,1),1);
-%     all_files = cell(size(subjects,1),1); %list of all data files separated by subject
-% 
-%     for i = 1:length(subjects)
-%         files{i} = {dir(char(strcat(subjects{i},'/*.dat'))).name}'; % contains file name of all dat files
-%         all_files{i} = strtrim(strcat(subjects{i},'/',files{i,:})); % contains full path of all data files
-%     end;     
-% end;
-% 
-% numFiles = cellfun(@(x) size(x, 1), all_files);
-
+sprintf('loading stepwise regression data')
 try
     load('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/all_subjects.mat');
 catch e
@@ -33,71 +14,123 @@ w=load(strcat(dir,'/map.mat'));
 map=w.map;
 
 nLetters_range = 1:10;
-[answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(nLetters_range, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, 1, []);
 
-% ws0=zeros(length(trainData1),size(trainData1{1},2)); 
-% for i=1:size(ws0,1)
-%     ws0(i,feaSelector1{i})=coeff1{i};
-% end;
-% % temp=[];
-% % temp(:,:)=sum(reshape(ws0.^2,[15,13,32]),2);
-% % temp2=temp./(sum(temp,2)*ones(1,32));
-% % [h,p]=ttest(temp2,[],.05)
-% 
-% coeff2=coeff1;
-% feaSelector2=feaSelector1;
-% for i=1:length(coeff2)
-%     coeff2{i}(:)=0;
-%     feaSelector2{i}(:)=1;
-%     %coeff2{i}(:)=normrnd(zeros(length(coeff2{i}),1),1);
-%     %feaSelector2{i}(:)=ceil(rand(length(feaSelector2{i}),1)*32);
-% end;
-% 
+%skip those bad subjects, as well as Greek subjects
+invalid=[1,3,6,26,48,51,54,58];
+greek=[70:71,73:74,76:81];
+subj_list=[invalid, greek];
+%subj_list=[62:63,65:66,68:73];
+%specify which subject
+zs=1:length(trainData1);
+inds=setdiff(zs, subj_list);
+cv=setdiff(zs, invalid);
 
-% 
-% [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns,all_channels,all_trells,all_labels] = P300_baum_welch(trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map,1,[]);
-% 
-% % ws1=zeros(size(ws0));
-% % for i=1:size(ws1,1)
-% %     ws1(i,all_feaSelectors{i}{10})=all_coeffs{i}{10};
-% % end;
-% % temp=[];
-% % temp(:,:)=sum(reshape(ws1.^2,[15,13,32]),2);
-% % temp2=temp./(sum(temp,2)*ones(1,32));
-% % [h,p]=ttest(temp2,[],.05)
-% % 
-% % x=cell2mat(all_accs{15})'
-% % 
-% % szFiles={'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjA\long\',...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjB\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjC\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjD\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjE\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjF\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjG\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjH\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjI\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjJ\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjK\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjL\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjM\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjN\long\'...
-% %     'Y:\users\wspeier\Data\P300 data\p300_jessica\p300subjO\long\'};
-% % answers=cell(size(szFiles));
-% % staticResults1=cell(size(szFiles));
-% % staticResults2=cell(size(szFiles));
-% % NLPResults1=cell(size(szFiles));
-% % NLPResults2=cell(size(szFiles));
-% % NLP2Results1=cell(size(szFiles));
-% % NLP2Results2=cell(size(szFiles));
-% % for i=1:length(szFiles)
-% %     ['file:' szFiles{i}]
-% %     %[answers{i},staticResults1{i},staticResults2{i},NLPResults1{i},NLPResults2{i},NLP2Results1{i},NLP2Results2{i},attScores,adjScores,distScores]=P300_HMM(szFiles{i},map);
-% %     %[answers{i},staticResults1{i},staticResults2{i},NLPResults1{i},NLPResults2{i},NLP2Results1{i},NLP2Results2{i},attScores,adjScores,distScores]=P300_HMM(szFiles{i});
-% %     %[answers{i},staticResults1{i},staticResults2{i},NLPResults1{i},NLPResults2{i},NLP2Results1{i},NLP2Results2{i}]=P300_HMM3(szFiles{i},map);
-% %     %[answers{i},staticResults1{i},staticResults2{i},NLPResults1{i},NLPResults2{i},NLP2Results1{i},NLP2Results2{i}]=P300_HMM3(szFiles{i});
-% %     %[nanswers{i},nstaticResults1{i},nstaticResults2{i},nNLPResults1{i},nNLPResults2{i},nNLP2Results1{i},nNLP2Results2{i}]=P300_HMM3(szFiles{i},map);
-% %     %[answers{i},staticResults1{i},NLPResults1{i}]=P300_baum_welch_test_1(szFiles{i},map,15,all_coeffs{i}{10},all_feaSelectors{i}{10});
-% %     [answers{i},staticResults2{i},NLPResults2{i}]=P300_baum_welch_test_2(szFiles{i},trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1,i,map,15);
-% % end;
-% 
+%feaSelector contains indices, coeff contains values
+%translating feaSelector and coeff into weights (sparse)
+ws=zeros(length(trainData1),size(trainData1{1},2));     
+for i=cv
+    ws(i,feaSelector1{i})=coeff1{i};
+end
+
+%set 'sp' symbol to '_' to avoid errors
+parameters=parameters1{2,1};
+parameters.TargetDefinitions.Value{36,1}='_';
+targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
+
+% load transition matrix or compile one if not exist yet
+sprintf('compiling transition matrix')
+try
+    load('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat')
+catch e    
+    transition_matrix=zeros(length(targets)*length(targets));
+    lambda=1; % add lambda smoothing
+    for i=1:length(targets)
+        for j=1:length(targets)
+            for k=1:length(targets)
+                denom=length(targets)*lambda;
+                try
+                    denom=map.(['t' targets([i j])' 'X'])+length(targets)*lambda;
+                catch e
+                end
+                try
+                    denom=denom-map.(['t' targets([i j])' '0']);
+                catch e
+                end
+                num=lambda;
+                try
+                    num=map.(['t' targets([i j k])'])+lambda;
+                catch e
+                end
+                transition_matrix((i-1)*length(targets)+j,(j-1)*length(targets)+k)=num/denom;
+            end
+        end
+    end
+    save('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat', 'transition_matrix')
+end
+
+blank=zeros(1,length(targets)*length(targets));
+blank(end)=1;
+
+answers =cell(length(inds),1);
+all_coeffs=cell(length(inds),1);
+all_feaSelectors=cell(length(inds),1);
+all_mean_as=cell(length(inds),1);
+all_mean_ns=cell(length(inds),1);
+all_std_as=cell(length(inds),1);
+all_std_ns=cell(length(inds),1);
+all_results=cell(length(inds),1);
+all_accs=cell(length(inds),1);
+all_trells=cell(length(inds),1);
+all_labels=cell(length(inds),1);
+
+
+enable_parallel = false;
+
+if enable_parallel
+    futures = parallel.FevalFuture.empty(length(inds), 0);
+    start=1;
+    while start+1<=length(inds)
+        for i=start:start+1
+            futures(i) = parfeval(backgroundPool, @P300_baum_welch, 11, inds(i), nLetters_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
+            % [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(nLetters_range, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, 1, []);
+        end
+
+        for j=start:start+1
+            [answer, results, accs, coeffs, feaSelectors, mean_as, mean_ns, std_as, std_ns, trells, labs] = fetchOutputs(futures(j));
+        
+            answers{j}=answer;
+            all_results{j}=results;
+            all_accs{j}=accs;
+            all_coeffs{j}=coeffs;
+            all_feaSelectors{j}=feaSelectors;
+            all_mean_as{j}=mean_as;
+            all_mean_ns{j}=mean_ns;
+            all_std_as{j}=std_as;
+            all_std_ns{j}=std_ns; 
+            all_trells{j}=trells;
+            all_labels{j}=labs;
+        end
+
+        start=start+2;
+        save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/all_accs.mat", "all_accs");
+    end
+else
+    for i=1:length(inds)
+        [answer, results, accs, coeffs, feaSelectors, mean_as, mean_ns, std_as, std_ns, trells, labs] = P300_baum_welch(inds(i), nLetters_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
+       
+        answers{i}=answer;
+        all_results{i}=results;
+        all_accs{i}=accs;
+        all_coeffs{i}=coeffs;
+        all_feaSelectors{i}=feaSelectors;
+        all_mean_as{i}=mean_as;
+        all_mean_ns{i}=mean_ns;
+        all_std_as{i}=std_as;
+        all_std_ns{i}=std_ns; 
+        all_trells{i}=trells;
+        all_labels{i}=labs;
+    end
+    save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/all_accs.mat", "all_accs");
+end
+
+

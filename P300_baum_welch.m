@@ -1,80 +1,22 @@
-function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(nLetters_range, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, subject_index, exclude)
+function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(z, nLetters_range, trainData1, allStim1, parameters1, labels1, exclude, ws, parameters, cv, blank, transition_matrix)
 
-min_score=-1;
-max_score=2;
-max_iter=10;    %manually set max iteration to 10
-
-%skip those bad subjects, as well as Greek subjects
-invalid=[1,3,6,26,48,51,54,58];
-greek=[70:71,73:74,76:81];
-subj_list=[invalid, greek];
-%subj_list=[62:63,65:66,68:73];
-%specify which subject
-zs=1:length(trainData1);
-inds=setdiff(zs, subj_list);
-cv=setdiff(zs, invalid);
-
-%feaSelector contains indices, coeff contains values
-%translating feaSelector and coeff into weights (sparse)
-ws=zeros(length(trainData1),size(trainData1{1},2));     
-for i=cv
-    ws(i,feaSelector1{i})=coeff1{i};
-end
-
-%set 'sp' symbol to '_' to avoid errors
-parameters=parameters1{2,1};
-parameters.TargetDefinitions.Value{36,1}='_';
-targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
-
-% load transition matrix or compile one if not exist yet
-sprintf('compiling transition matrix')
-try
-    load('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat')
-catch e    
-    transition_matrix=zeros(length(targets)*length(targets));
-    lambda=1; % add lambda smoothing
-    for i=1:length(targets)
-        for j=1:length(targets)
-            for k=1:length(targets)
-                denom=length(targets)*lambda;
-                try
-                    denom=map.(['t' targets([i j])' 'X'])+length(targets)*lambda;
-                catch e
-                end
-                try
-                    denom=denom-map.(['t' targets([i j])' '0']);
-                catch e
-                end
-                num=lambda;
-                try
-                    num=map.(['t' targets([i j k])'])+lambda;
-                catch e
-                end
-                transition_matrix((i-1)*length(targets)+j,(j-1)*length(targets)+k)=num/denom;
-            end
-        end
-    end
-    save('/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/transition_matrix.mat', 'transition_matrix')
-end
-
-blank=zeros(1,length(targets)*length(targets));
-blank(end)=1;
-
-answers =cell(length(inds),length(nLetters_range));
-all_coeffs=cell(length(inds),length(nLetters_range));
-all_feaSelectors=cell(length(inds),length(nLetters_range));
-all_mean_as=cell(length(inds),length(nLetters_range));
-all_mean_ns=cell(length(inds),length(nLetters_range));
-all_std_as=cell(length(inds),length(nLetters_range));
-all_std_ns=cell(length(inds),length(nLetters_range));
-all_results=cell(length(inds),length(nLetters_range));
-all_accs=cell(length(inds),length(nLetters_range));
-all_trells=cell(length(inds),length(nLetters_range));
-all_labels=cell(length(inds),length(nLetters_range));
-
-
-for z=inds(1:10)
-% for z=setdiff(zs, subj_list)
+    maxLetters=length(nLetters_range);
+    answers=cell(maxLetters,1);
+    all_coeffs=cell(maxLetters,1);
+    all_feaSelectors=cell(maxLetters,1);
+    all_mean_as=cell(maxLetters,1);
+    all_mean_ns=cell(maxLetters,1);
+    all_std_as=cell(maxLetters,1);
+    all_std_ns=cell(maxLetters,1);
+    all_results=cell(maxLetters,1);
+    all_accs=cell(maxLetters,1);
+    all_trells=cell(maxLetters,1);
+    all_labels=cell(maxLetters,1);
+    
+    min_score=-1;
+    max_score=2;
+    max_iter=10;    %manually set max iteration to 10
+    
     sprintf('testing subject: %d',z)
     len = length(cv)-1;
     range = setdiff(cv, z);
@@ -106,7 +48,7 @@ for z=inds(1:10)
     end
     elapsedTime = toc; % Stop timer and get elapsed time
     fprintf('data loading time is %.4f seconds.\n', elapsedTime);
-
+    
     test_data=trainData1{z};
     w0=ws(setdiff(cv,z),:);
     scores_pop=max(min_score,min(max_score,all_data*w0'));
@@ -114,20 +56,20 @@ for z=inds(1:10)
     mean_n_pop=mean(scores_pop(all_labs~=1,:),1);
     cov_a_pop =cov (scores_pop(all_labs==1,:),1);
     cov_n_pop =cov (scores_pop(all_labs~=1,:),1);
-
+    
     %set up parameters to properly extract a subset of data
     nSeq=parameters.NumberOfSequences.NumericValue;
     nr=parameters.NumMatrixRows.NumericValue;
     nc=parameters.NumMatrixColumns.NumericValue;
     nStim=nr+nc;
     dataSize=nStim*nSeq*10;
-
+    
     for nLetters=nLetters_range
-        
+    
         %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         % taking slices of test_data by changing nLetters
         %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
+    
         %count the number of files for a subject, nFiles = 1~3
         nFiles=0;     
         for i=1:size(parameters1,2)
@@ -136,23 +78,23 @@ for z=inds(1:10)
             end
             nFiles=nFiles+1;
         end
-        
+    
         ratio = nLetters/10;        
-
+    
         %take slices of test_data for unsupervised training
         test_data_sliced = [];
         for j=1:nFiles
             start = int64(1+(j-1)*dataSize);
             test_data_sliced = [test_data_sliced; test_data(start:(start+int64(dataSize*ratio)-1),:)];
         end    
-
+    
         %take slices of allStim1{z} such that the shapes match
         z_stim_sliced = [];
         for k=1:nFiles
             start = int64(1+(k-1)*dataSize);
             z_stim_sliced = [z_stim_sliced; allStim1{z}(start:(start+int64(dataSize*ratio)-1),:)];
         end 
-
+    
         %Gaussian mixture model based on mean and cov
         scores=max(-1,min(2,test_data_sliced*w0'));
         try
@@ -163,13 +105,13 @@ for z=inds(1:10)
             probs_a=normpdf(scores,0,1);
             probs_n=normpdf(scores,0,1);
         end
-
+    
         % set min non-zero value to 0
         mv=min([probs_a(probs_a>0);probs_n(probs_n>0)]);
         probs_a(probs_a==0)=mv;
         probs_n(probs_n==0)=mv;
-
-
+    
+    
         %=======================================================================
         %baum-welch algorith, updating the parameters
         %=======================================================================
@@ -186,7 +128,7 @@ for z=inds(1:10)
         labs=cell(0);
         answer=[];
         used=zeros(size(scores,1),1);
-
+    
         tic;
         while ~converged
             sprintf('iteration: %d',counter)
@@ -207,13 +149,13 @@ for z=inds(1:10)
                 nr=parameters.NumMatrixRows.NumericValue;
                 nc=parameters.NumMatrixColumns.NumericValue;
                 nStim=nr+nc;
-                
+    
                 a_trellis=zeros(nLetters,power(nTargets,2));
                 b_trellis=zeros(nLetters,power(nTargets,2));
                 v_trellis=zeros(nLetters,power(nTargets,2));
                 back_pointers=zeros(nLetters,power(nTargets,2));
                 target=mod((1:size(a_trellis,2))-1,nTargets)+1;
-                
+    
                 for j=1:nLetters
                     answer(tLetters-nLetters+j)=find(targets==word(j));
                     a_score=zeros(1,size(a_trellis,2));
@@ -228,7 +170,7 @@ for z=inds(1:10)
                         prob=attended*(probs_a(index)/probs_n(index))+(1-attended);
                         a_score=a_score+log10(prob);
                         a_score=a_score-max(a_score);
-                        
+    
                         if j>1
                             index2=(tLetters+1-j)*nStim*nSeq+k;
                             attended2=or(floor((target-1)/nr+1)==z_stim_sliced(index2),...
@@ -268,11 +210,11 @@ for z=inds(1:10)
             lab_pdf=sum(reshape(fb_trellis,[size(fb_trellis,1),nTargets,nTargets]),3);
             lab_pdf=lab_pdf(floor(((1:size(scores,1))-1)/nSeq/nStim+1),:);
             lab_cdf=cumsum(lab_pdf,2);
-            
+    
             r=rand(size(lab_cdf,1),1)*ones(1,nTargets);
             sample=sum(lab_cdf<r,2)+1;
             lab=or(floor((sample-1)/nr+1)==z_stim_sliced,(mod((sample-1),nr)+nr+1)==z_stim_sliced);
-
+    
             [coeff, feaSelector] = BuildStepwiseLDA(test_data_sliced(find(used==1),:), lab(find(used==1)));
             scores=test_data_sliced(:,feaSelector)*coeff;
             mean_a=mean(scores((used.*lab)    ==1,:),1);
@@ -281,9 +223,9 @@ for z=inds(1:10)
             std_n =std (scores((used.*(1-lab))==1,:),1);
             probs_a=normpdf(scores,mean_a,std_a);
             probs_n=normpdf(scores,mean_n,std_n);
-            
+    
             acc=sum(answer==results)/length(answer);
-            
+    
             coeffs{counter}=coeff;
             feaSelectors{counter}=feaSelector;
             mean_as{counter}=mean_a;
@@ -294,8 +236,8 @@ for z=inds(1:10)
             accs
             trells{counter}=fb_trellis;
             labs{counter}=lab;
-            
-            
+    
+    
             %         for i=1:counter-1
             %             if length(coeff)==length(coeffs{i})
             %                 if sum(coeff==coeffs{i})==length(coeff)
@@ -303,41 +245,28 @@ for z=inds(1:10)
             %                 end;
             %             end;
             %         end;
-
+    
             if(counter>=max_iter)
                 converged=1;
             end
             counter=counter+1;
         end
-
+    
         elapsedTime = toc; % Stop timer and get elapsed time
         fprintf('baum-welch time for %d letters is %.4f seconds.\n', nLetters, elapsedTime);
-
-        all_coeffs{z,nLetters}=coeffs;
-        all_feaSelectors{z,nLetters}=feaSelectors;
-        all_mean_as{z,nLetters}=mean_as;
-        all_mean_ns{z,nLetters}=mean_ns;
-        all_std_as{z,nLetters}=std_as;
-        all_std_ns{z,nLetters}=std_ns;
-        all_accs{z,nLetters}=accs;
-        accs
-        answers{z,nLetters}=answer;
-        all_results{z,nLetters}=results;
-        all_trells{z,nLetters}=trells;
-        all_labels{z,nLetters}=labs;
-        
+    
+        all_coeffs{nLetters}=coeffs;
+        all_feaSelectors{nLetters}=feaSelectors;
+        all_mean_as{nLetters}=mean_as;
+        all_mean_ns{nLetters}=mean_ns;
+        all_std_as{nLetters}=std_as;
+        all_std_ns{nLetters}=std_ns;
+        all_accs{nLetters}=accs;
+        answers{nLetters}=answer;
+        all_results{nLetters}=results;
+        all_trells{nLetters}=trells;
+        all_labels{nLetters}=labs;
+    
     end
-
-    save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/all_accs.mat", "all_accs");
-end
-
-
-
-% for i=nLetters_range
-%     %create figure, multiple subjects in one plot
-%     figure;         
-%     hold on;
-%     for z=size(all_accs, 1)
-%         plot(all_accs{z,i});   %plot the accuracy over the iterations
-%     end
-% end
+    
+    
