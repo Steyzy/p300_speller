@@ -2,8 +2,6 @@
 % this file is for data analysis on training accuracies
 %=========================================================================================================
 
-load("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/graph_accs.mat");
-
 % graph_accs = cell(size(all_accs{1}, 1), 1);
 % for i=1:size(all_accs{1}, 1)
 %     graph_accs{i} = cell(size(all_accs, 1), 1);
@@ -14,9 +12,10 @@ load("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/graph_accs.
 %         graph_accs{i}{z} = all_accs{z}{i};
 %     end
 % end
-
 % save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/graph_accs.mat", "graph_accs");
 
+
+load("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/graph_accs.mat");
 for i=1:size(graph_accs, 1)
     %create figure, multiple subjects in one plot
     figure; 
