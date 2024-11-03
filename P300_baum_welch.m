@@ -1,99 +1,94 @@
-function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(z, nLetters_range, trainData1, allStim1, parameters1, labels1, exclude, ws, parameters, cv, blank, transition_matrix)
+function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(z, nLetters_range, nSeq_range, trainData1, allStim1, parameters1, labels1, exclude, ws, parameters, cv, blank, transition_matrix)
 
-    maxLetters=length(nLetters_range);
-    answers=cell(maxLetters,1);
-    all_coeffs=cell(maxLetters,1);
-    all_feaSelectors=cell(maxLetters,1);
-    all_mean_as=cell(maxLetters,1);
-    all_mean_ns=cell(maxLetters,1);
-    all_std_as=cell(maxLetters,1);
-    all_std_ns=cell(maxLetters,1);
-    all_results=cell(maxLetters,1);
-    all_accs=cell(maxLetters,1);
-    all_trells=cell(maxLetters,1);
-    all_labels=cell(maxLetters,1);
-    
-    min_score=-1;
-    max_score=2;
-    max_iter=10;    %manually set max iteration to 10
-    
-    sprintf('testing subject: %d',z)
-    len = length(cv)-1;
-    range = setdiff(cv, z);
-    info_array = zeros(len, 2);
-    sum_dim = 0;
-    for k=1:len
-        j = range(k);
-        info_array(k, 2) = size(trainData1{j}, 1);  %dim1 of trainData1{j}
-        if k>1
-            info_array(k, 1) = info_array(k-1, 1)+info_array(k-1, 2);
-        else
-            info_array(k, 1) = 1;
-        end
-        sum_dim = sum_dim+info_array(k, 2);
+maxLetters=length(nLetters_range);
+maxSeqs=length(nSeq_range);
+answers=cell(maxLetters,maxSeqs);
+all_coeffs=cell(maxLetters,maxSeqs);
+all_feaSelectors=cell(maxLetters,maxSeqs);
+all_mean_as=cell(maxLetters,maxSeqs);
+all_mean_ns=cell(maxLetters,maxSeqs);
+all_std_as=cell(maxLetters,maxSeqs);
+all_std_ns=cell(maxLetters,maxSeqs);
+all_results=cell(maxLetters,maxSeqs);
+all_accs=cell(maxLetters,maxSeqs);
+all_trells=cell(maxLetters,maxSeqs);
+all_labels=cell(maxLetters,maxSeqs);
+
+min_score=-1;
+max_score=2;
+max_iter=10;    %manually set max iteration to 10
+
+sprintf('testing subject: %d',z)
+len = length(cv)-1;
+range = setdiff(cv, z);
+info_array = zeros(len, 2);
+sum_dim = 0;
+for k=1:len
+    j = range(k);
+    info_array(k, 2) = size(trainData1{j}, 1);  %dim1 of trainData1{j}
+    if k>1
+        info_array(k, 1) = info_array(k-1, 1)+info_array(k-1, 2);
+    else
+        info_array(k, 1) = 1;
     end
-    
-    tic;
-    dim2 = size(trainData1{1}, 2);  %dim2 of trainData1{i}
-    all_data = zeros(sum_dim, dim2);
-    all_stim = zeros(sum_dim, 1);
-    all_labs = zeros(sum_dim, 1);
-    for i=1:len
-        j = range(i);
-        start = info_array(i, 1);
-        duration = info_array(i, 2);
-        all_data(start:start+duration-1, :) = trainData1{j};
-        all_stim(start:start+duration-1, :) = allStim1{j};
-        all_labs(start:start+duration-1, :) = labels1{j};
-    end
-    elapsedTime = toc; % Stop timer and get elapsed time
-    fprintf('data loading time is %.4f seconds.\n', elapsedTime);
-    
-    test_data=trainData1{z};
-    w0=ws(setdiff(cv,z),:);
-    scores_pop=max(min_score,min(max_score,all_data*w0'));
-    mean_a_pop=mean(scores_pop(all_labs==1,:),1);
-    mean_n_pop=mean(scores_pop(all_labs~=1,:),1);
-    cov_a_pop =cov (scores_pop(all_labs==1,:),1);
-    cov_n_pop =cov (scores_pop(all_labs~=1,:),1);
-    
-    %set up parameters to properly extract a subset of data
-    nSeq=parameters.NumberOfSequences.NumericValue;
-    nr=parameters.NumMatrixRows.NumericValue;
-    nc=parameters.NumMatrixColumns.NumericValue;
-    nStim=nr+nc;
-    dataSize=nStim*nSeq*10;
-    
-    for nLetters=nLetters_range
-    
+    sum_dim = sum_dim+info_array(k, 2);
+end
+
+tic;
+dim2 = size(trainData1{1}, 2);  %dim2 of trainData1{i}
+all_data = zeros(sum_dim, dim2);
+all_stim = zeros(sum_dim, 1);
+all_labs = zeros(sum_dim, 1);
+for i=1:len
+    j = range(i);
+    start = info_array(i, 1);
+    duration = info_array(i, 2);
+    all_data(start:start+duration-1, :) = trainData1{j};
+    all_stim(start:start+duration-1, :) = allStim1{j};
+    all_labs(start:start+duration-1, :) = labels1{j};
+end
+elapsedTime = toc; % Stop timer and get elapsed time
+fprintf('data loading time is %.4f seconds.\n', elapsedTime);
+
+test_data=trainData1{z};
+w0=ws(setdiff(cv,z),:);
+scores_pop=max(min_score,min(max_score,all_data*w0'));
+mean_a_pop=mean(scores_pop(all_labs==1,:),1);
+mean_n_pop=mean(scores_pop(all_labs~=1,:),1);
+cov_a_pop =cov (scores_pop(all_labs==1,:),1);
+cov_n_pop =cov (scores_pop(all_labs~=1,:),1);
+
+%set up parameters to properly extract a subset of data
+fSeq=parameters.NumberOfSequences.NumericValue;     %stands for full seq
+nr=parameters.NumMatrixRows.NumericValue;
+nc=parameters.NumMatrixColumns.NumericValue;
+nStim=nr+nc;
+
+for nLetters=nLetters_range
+    for nSeq=nSeq_range
+
         %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         % taking slices of test_data by changing nLetters
         %!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     
-        %count the number of files for a subject, nFiles = 1~3
-        nFiles=0;     
+        %take slices of test_data and allStim1{z} for unsupervised training
+        test_data_sliced = [];
+        z_stim_sliced = [];
+        start=1;
         for i=1:size(parameters1,2)
-            if(isempty(parameters1{z,i}))
+            params=parameters1{z,i};            
+            if(isempty(params))
                 break;
             end
-            nFiles=nFiles+1;
-        end
-    
-        ratio = nLetters/10;        
-    
-        %take slices of test_data for unsupervised training
-        test_data_sliced = [];
-        for j=1:nFiles
-            start = int64(1+(j-1)*dataSize);
-            test_data_sliced = [test_data_sliced; test_data(start:(start+int64(dataSize*ratio)-1),:)];
+            word=lower(params.TextToSpell.Value{1});
+            temp=start;
+            for j=1:nLetters
+                test_data_sliced = [test_data_sliced; test_data(temp:(temp+nStim*nSeq-1),:)];
+                z_stim_sliced = [z_stim_sliced; allStim1{z}(temp:(temp+nStim*nSeq-1),:)];
+                temp=temp+nStim*fSeq;
+            end
+            start=start+nStim*fSeq*length(word);
         end    
-    
-        %take slices of allStim1{z} such that the shapes match
-        z_stim_sliced = [];
-        for k=1:nFiles
-            start = int64(1+(k-1)*dataSize);
-            z_stim_sliced = [z_stim_sliced; allStim1{z}(start:(start+int64(dataSize*ratio)-1),:)];
-        end 
     
         %Gaussian mixture model based on mean and cov
         scores=max(-1,min(2,test_data_sliced*w0'));
@@ -145,7 +140,7 @@ function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean
                 targets = lower(cell2mat(parameters.TargetDefinitions.Value(:,1)));
                 nTargets=length(targets);
                 tLetters=tLetters+nLetters;
-                nSeq=parameters.NumberOfSequences.NumericValue;
+                % nSeq=parameters.NumberOfSequences.NumericValue;
                 nr=parameters.NumMatrixRows.NumericValue;
                 nc=parameters.NumMatrixColumns.NumericValue;
                 nStim=nr+nc;
@@ -253,20 +248,19 @@ function [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean
         end
     
         elapsedTime = toc; % Stop timer and get elapsed time
-        fprintf('baum-welch time for %d letters is %.4f seconds.\n', nLetters, elapsedTime);
+        fprintf('baum-welch time for %d letters and %d sequences is %.4f seconds.\n', nLetters, nSeq, elapsedTime);
     
-        all_coeffs{nLetters}=coeffs;
-        all_feaSelectors{nLetters}=feaSelectors;
-        all_mean_as{nLetters}=mean_as;
-        all_mean_ns{nLetters}=mean_ns;
-        all_std_as{nLetters}=std_as;
-        all_std_ns{nLetters}=std_ns;
-        all_accs{nLetters}=accs;
-        answers{nLetters}=answer;
-        all_results{nLetters}=results;
-        all_trells{nLetters}=trells;
-        all_labels{nLetters}=labs;
-    
+        all_coeffs{nLetters,nSeq}=coeffs;
+        all_feaSelectors{nLetters,nSeq}=feaSelectors;
+        all_mean_as{nLetters,nSeq}=mean_as;
+        all_mean_ns{nLetters,nSeq}=mean_ns;
+        all_std_as{nLetters,nSeq}=std_as;
+        all_std_ns{nLetters,nSeq}=std_ns;
+        all_accs{nLetters,nSeq}=accs;
+        answers{nLetters,nSeq}=answer;
+        all_results{nLetters,nSeq}=results;
+        all_trells{nLetters,nSeq}=trells;
+        all_labels{nLetters,nSeq}=labs;
     end
-    
-    
+end
+

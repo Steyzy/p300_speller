@@ -13,13 +13,13 @@ dir = '/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch';
 w=load(strcat(dir,'/map.mat'));
 map=w.map;
 
-nLetters_range = 1:10;
+nLetters_range = 10;
+nSeq_range = 1:10;
 
 %skip those bad subjects, as well as Greek subjects
-invalid=[1,3,6,26,48,51,54,58];
+invalid=[1,3,6,26,41,48,51,54,58];
 greek=[70:71,73:74,76:81];
 subj_list=[invalid, greek];
-%subj_list=[62:63,65:66,68:73];
 %specify which subject
 zs=1:length(trainData1);
 inds=setdiff(zs, subj_list);
@@ -85,14 +85,14 @@ all_labels=cell(length(inds),1);
 
 
 enable_parallel = false;
+sequential_range = 1:9;
 
 if enable_parallel
     futures = parallel.FevalFuture.empty(length(inds), 0);
     start=1;
     while start+1<=length(inds)
         for i=start:start+1
-            futures(i) = parfeval(backgroundPool, @P300_baum_welch, 11, inds(i), nLetters_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
-            % [answers, all_results, all_accs, all_coeffs, all_feaSelectors, all_mean_as, all_mean_ns, all_std_as, all_std_ns, all_trells, all_labels] = P300_baum_welch(nLetters_range, trainData1, allStim1, parameters1, labels1, coeff1, feaSelector1, map, 1, []);
+            futures(i) = parfeval(backgroundPool, @P300_baum_welch, 11, inds(i), nLetters_range, nSeq_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
         end
 
         for j=start:start+1
@@ -115,8 +115,8 @@ if enable_parallel
         save("/Users/yangziyi/Desktop/Neuro Research/p300_baum_welch/results/all_accs.mat", "all_accs");
     end
 else
-    for i=1:length(inds)
-        [answer, results, accs, coeffs, feaSelectors, mean_as, mean_ns, std_as, std_ns, trells, labs] = P300_baum_welch(inds(i), nLetters_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
+    for i=sequential_range
+        [answer, results, accs, coeffs, feaSelectors, mean_as, mean_ns, std_as, std_ns, trells, labs] = P300_baum_welch(inds(i), nLetters_range, nSeq_range, trainData1, allStim1, parameters1, labels1, [], ws, parameters, cv, blank, transition_matrix);
        
         answers{i}=answer;
         all_results{i}=results;
